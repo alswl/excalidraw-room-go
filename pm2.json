@@ -1,0 +1,12 @@
+{
+  "name": "excalidraw-collab-dev",
+  "script": "./excalidraw-room-server",
+  "ignore_watch": ["public"],
+  "autorestart": false,
+  "exec_mode": "fork_mode",
+  "instances": 1,
+  "env": {
+    "NODE_ENV": "development",
+    "TZ": "Europe/London"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "excalidraw-room-go-parity-test",
+  "private": true,
+  "description": "End-to-end parity test against the original excalidraw-room behavior",
+  "devDependencies": {
+    "socket.io-client": "^4.6.1"
+  }
+}

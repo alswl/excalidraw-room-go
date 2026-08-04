@@ -1,0 +1,21 @@
+# Compiled binary
+/excalidraw-room-server
+/excalidraw-room
+/excalidraw-room-go
+
+# Env files (matches the original server: only .env.development is committed)
+.env
+.env.test
+.env.production
+
+# Dependencies (test/)
+node_modules/
+
+# Logs
+logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
