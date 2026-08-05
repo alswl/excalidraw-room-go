@@ -7,6 +7,12 @@
 logs
 *.log
 
+# Local spec tooling (symlinked to ~/dev/my/my-specs/projects/excalidraw-room-go/)
+.claude
+.specify
+CLAUDE.md
+specs
+
 # OS / editor
 .DS_Store
 .idea/
