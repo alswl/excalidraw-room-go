@@ -1,51 +1,34 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
-
-	"github.com/joho/godotenv"
 )
 
-// loadEnvFile mirrors the original dotenv selection in the Node server:
-//
-//	NODE_ENV == "development" -> loads .env.development
-//	otherwise                 -> loads .env.production
-//
-// Like Node's dotenv, an already-set environment variable takes precedence
-// over the value in the file, and a missing file is ignored.
-func loadEnvFile() {
-	path := ".env.production"
-	if os.Getenv("NODE_ENV") == "development" {
-		path = ".env.development"
-	}
-	_ = godotenv.Load(path)
-}
-
-// Config holds the server configuration resolved from the environment.
+// Config holds the server configuration, read from the environment (12-factor
+// style) with Go-friendly defaults.
 type Config struct {
-	// Port is the HTTP port. Mirrors:
-	//   process.env.PORT || (NODE_ENV !== "development" ? 80 : 3002)
+	// Port is the HTTP listen port. Defaults to 8080.
 	Port int
-	// CORSOrigin is the allowed origin for socket.io, defaulting to "*".
+	// CORSOrigin is the allowed Socket.IO origin. Defaults to "*".
 	CORSOrigin string
 }
 
-func loadConfig() Config {
+func loadConfig() (Config, error) {
 	cfg := Config{
-		Port:       80,
+		Port:       8080,
 		CORSOrigin: "*",
 	}
-	if os.Getenv("NODE_ENV") == "development" {
-		cfg.Port = 3002
-	}
 	if p := os.Getenv("PORT"); p != "" {
-		if n, err := strconv.Atoi(p); err == nil {
-			cfg.Port = n
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid PORT %q: %w", p, err)
 		}
+		cfg.Port = n
 	}
 	if o := os.Getenv("CORS_ORIGIN"); o != "" {
 		cfg.CORSOrigin = o
 	}
-	return cfg
+	return cfg, nil
 }

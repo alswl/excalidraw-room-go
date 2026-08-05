@@ -16,5 +16,5 @@ WORKDIR /app
 COPY --from=build /out/excalidraw-room-server .
 COPY public ./public
 
-EXPOSE 80
+EXPOSE 8080
 CMD ["/app/excalidraw-room-server"]

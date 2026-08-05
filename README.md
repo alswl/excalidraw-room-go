@@ -74,15 +74,13 @@ emits `broadcast-unfollow` when a follow room becomes empty.
 
 ### Configuration
 
-| Env var       | Default        | Notes                                                                  |
-| ------------- | -------------- | ---------------------------------------------------------------------- |
-| `PORT`        | `80` (prod) / `3002` (dev) | `NODE_ENV != "development"` uses `80`              |
-| `NODE_ENV`    | —              | `development` loads `.env.development`; anything else loads `.env.production` |
-| `CORS_ORIGIN` | `*`            | allowed Socket.IO origin                                                |
+Configuration is read from environment variables (12-factor style) with
+Go-friendly defaults:
 
-Env files are loaded with [godotenv](https://github.com/joho/godotenv) and never
-override variables already present in the environment (same as Node's dotenv).
-Only `.env.development` is committed; `.env.production` is git-ignored.
+| Env var       | Default | Notes                    |
+| ------------- | ------- | ------------------------ |
+| `PORT`        | `8080`  | HTTP listen port         |
+| `CORS_ORIGIN` | `*`     | allowed Socket.IO origin |
 
 ## Running
 
@@ -91,22 +89,22 @@ Requires Go 1.26+ (see the `go` directive in `go.mod`).
 ### Development
 
 ```sh
-# run the development server on :3002
-NODE_ENV=development go run .
+# run the server on :8080
+go run .
 ```
 
 ### Production
 
 ```sh
 go build -o excalidraw-room-server .
-./excalidraw-room-server          # listens on :80 unless PORT is set
+PORT=8080 ./excalidraw-room-server
 ```
 
 ### Docker
 
 ```sh
 docker build -t excalidraw-room-go .
-docker run --rm -p 80:80 excalidraw-room-go
+docker run --rm -p 8080:8080 excalidraw-room-go
 ```
 
 The server exits with code `0` after a graceful shutdown (`SIGINT`/`SIGTERM`):
@@ -129,9 +127,9 @@ development: the same scenario suite passes on both implementations.
 
 ## Compatibility with the original excalidraw-room
 
-The protocol surface — HTTP responses, Socket.IO event names, payload shapes,
-room and follow-mode semantics, and environment configuration — is identical to
-the original.
+The protocol surface — HTTP responses, Socket.IO event names, and payload
+shapes — is identical to the original. (Configuration is Go-standard
+environment variables rather than the original's `NODE_ENV`-based setup.)
 
 A few notes:
 

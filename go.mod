@@ -5,7 +5,6 @@ go 1.26.5
 require (
 	github.com/danielgtaylor/huma/v2 v2.35.0
 	github.com/go-chi/chi/v5 v5.3.1
-	github.com/joho/godotenv v1.5.1
 	github.com/zishang520/engine.io-client-go v1.1.0
 	github.com/zishang520/engine.io/v2 v2.5.0
 	github.com/zishang520/socket.io-client-go v1.1.0

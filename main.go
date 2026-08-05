@@ -24,8 +24,10 @@ func main() {
 // run loads the configuration, wires the HTTP + socket.io handlers and serves
 // them until SIGINT/SIGTERM triggers a graceful shutdown.
 func run() error {
-	loadEnvFile()
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 
 	handler, io := buildRouter(cfg)
 
