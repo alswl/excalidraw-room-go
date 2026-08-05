@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Socket.IO event emission is fire-and-forget: the server relays events
+        # to room members and cannot act on per-send errors, mirroring the
+        # original excalidraw-room Node server. `On` handler registration lives
+        # on the embedded emitters (StrictEventEmitter / types.EventEmitter).
+        - (*github.com/zishang520/socket.io/v2/socket.StrictEventEmitter).On
+        - (*github.com/zishang520/socket.io/v2/socket.Socket).Emit
+        - (*github.com/zishang520/socket.io/v2/socket.RemoteSocket).Emit
+        - (*github.com/zishang520/socket.io/v2/socket.BroadcastOperator).Emit
+        # Test-only client calls (socket.io-client-go) follow the same pattern.
+        - (github.com/zishang520/engine.io/v2/types.EventEmitter).On
+        - (*github.com/zishang520/socket.io-client-go/socket.Socket).Emit
+        # HTTP body close: error ignored by convention.
+        - (io.ReadCloser).Close
