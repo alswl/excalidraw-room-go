@@ -1,119 +1,152 @@
-# Excalidraw collaboration server (Go)
+# Excalidraw Collaboration Server (Go)
 
-A from-scratch reimplementation of the
+A from-scratch, drop-in compatible reimplementation of the
 [excalidraw-room](https://github.com/excalidraw/excalidraw-room) collaboration
-server in Go, using the [huma](https://huma.rocks) application framework for the
-HTTP layer and [zishang520/socket.io](https://github.com/zishang520/socket.io) —
-a faithful Go port of the official Socket.IO v4 server — for the realtime layer.
+server in Go. It speaks the exact same HTTP and Socket.IO wire protocol as the
+original Node/Express server, so existing Excalidraw clients connect and
+collaborate without any changes.
 
-The API surface and behavior are identical to the original Node/Express +
-Socket.IO server:
+- **HTTP layer** — [huma v2](https://huma.rocks) (on a [chi](https://github.com/go-chi/chi) router)
+- **Realtime layer** — [zishang520/socket.io](https://github.com/zishang520/socket.io), a faithful Go port of the official Socket.IO v4 server
 
-- the same HTTP endpoints and responses,
-- the same Socket.IO event names, payloads and room/follow-mode semantics,
-- the same environment configuration.
+## Features
+
+- Identical API surface to the original server (see [API](#api))
+- WebSocket **and** HTTP long-polling transports, with automatic upgrade
+- Binary relay (`ArrayBuffer` / `Uint8Array`) for Excalidraw's encrypted scene data
+- Follow mode (`follow@{socketId}` rooms) with follower change notifications
+- Engine.IO v3 *and* v4 clients (`allowEIO3`)
+- CORS configurable per the original server
+- Static file serving from `./public`
+- Graceful shutdown on `SIGINT` / `SIGTERM`
+- Fully Go-native build, runtime, and test toolchain — no Node.js or PM2
+
+## Architecture
+
+```
+                 ┌────────────────────────────────────────────┐
+ browser /       │  excalidraw-room-go                         │
+ Excalidraw      │                                            │
+ client          │   /socket.io/* ──► zishang520/socket.io     │
+  ─────────────► │       (Engine.IO v3/v4, polling + ws)      │
+                 │              │ room events / broadcasts    │
+                 │              ▼                            │
+                 │   GET /  ───► huma (chi)                   │
+                 │   /*    ───► static files from ./public    │
+                 └────────────────────────────────────────────┘
+```
+
+The two layers share one HTTP server. Requests under `/socket.io/` are handled
+by the Socket.IO engine; everything else is served by the huma router. Both are
+mounted in [`buildRouter`](main.go), and the server runs under a single
+`http.Server` with graceful shutdown.
 
 ## API
+
+The API is byte-for-byte compatible with the original server.
 
 ### HTTP
 
 | Method | Path      | Response                                                            |
 | ------ | --------- | ------------------------------------------------------------------- |
 | GET    | `/`       | `Excalidraw collaboration server is up :)` (`text/html; charset=utf-8`) |
-| GET    | `/*`      | Static files served from `./public` (mirrors `express.static("public")`) |
+| GET    | `/*`      | Static files from `./public` (mirrors `express.static("public")`)        |
 
 ### Socket.IO (served at `/socket.io/`)
 
-Events handled from clients:
+Events received from clients:
 
-| Event                     | Payload                                                        | Behavior                                                                 |
-| ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `join-room`               | `roomID: string`                                               | joins the room; emits `first-in-room` (solo) or `new-user` + `room-user-change` |
-| `server-broadcast`        | `(roomID, encryptedData: ArrayBuffer, iv: Uint8Array)`         | relays `client-broadcast` to everyone in the room except the sender       |
-| `server-volatile-broadcast`| `(roomID, encryptedData: ArrayBuffer, iv: Uint8Array)`         | same, but volatile                                                       |
-| `user-follow`             | `{ userToFollow: { socketId, username }, action: "FOLLOW"\|"UNFOLLOW" }` | tracks `follow@{socketId}` rooms and notifies the followed user via `user-follow-room-change` |
+| Event                      | Payload                                                    | Behavior                                                                 |
+| -------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `join-room`                | `roomID: string`                                           | joins the room; emits `first-in-room` (solo) or `new-user` + `room-user-change` |
+| `server-broadcast`         | `(roomID, encryptedData: ArrayBuffer, iv: Uint8Array)`     | relays `client-broadcast` to everyone in the room except the sender       |
+| `server-volatile-broadcast`| `(roomID, encryptedData: ArrayBuffer, iv: Uint8Array)`     | same, but volatile (skipped when the transport isn't writable)            |
+| `user-follow`              | `{ userToFollow: { socketId, username }, action: "FOLLOW"\|"UNFOLLOW" }` | tracks `follow@{socketId}` rooms and notifies the followed user via `user-follow-room-change` |
 
 Events emitted to clients:
 
 `init-room`, `first-in-room`, `new-user`, `room-user-change`,
 `client-broadcast`, `user-follow-room-change`, `broadcast-unfollow`.
 
-Connection semantics (including the `disconnecting` handler that broadcasts
-`room-user-change` to the remaining room members and `broadcast-unfollow` when a
-follow room becomes empty) replicate the original implementation exactly.
-
-Room-mutating events (`join-room`, `user-follow`, `disconnecting`) are processed
-under a shared mutex. The original server ran on a single-threaded event loop,
-so its handlers never interleaved; the Go adapter dispatches each socket's
-events on its own goroutine, and serializing the handlers reproduces the
-original's ordering (and avoids dropping membership updates when two sockets
-join the same room within the same instant).
+Connection lifecycle replicates the original, including the `disconnecting`
+handler that broadcasts `room-user-change` to the remaining room members and
+emits `broadcast-unfollow` when a follow room becomes empty.
 
 ### Configuration
 
-| Env var        | Default  | Notes                                                                 |
-| -------------- | -------- | --------------------------------------------------------------------- |
-| `PORT`         | `80` (prod) / `3002` (dev) | `NODE_ENV != "development"` uses 80 |
-| `NODE_ENV`     | —        | `development` loads `.env.development`; anything else loads `.env.production` |
-| `CORS_ORIGIN`  | `*`      | allowed Socket.IO origin                                               |
+| Env var       | Default        | Notes                                                                  |
+| ------------- | -------------- | ---------------------------------------------------------------------- |
+| `PORT`        | `80` (prod) / `3002` (dev) | `NODE_ENV != "development"` uses `80`              |
+| `NODE_ENV`    | —              | `development` loads `.env.development`; anything else loads `.env.production` |
+| `CORS_ORIGIN` | `*`            | allowed Socket.IO origin                                                |
 
 Env files are loaded with [godotenv](https://github.com/joho/godotenv) and never
 override variables already present in the environment (same as Node's dotenv).
+Only `.env.development` is committed; `.env.production` is git-ignored.
 
-## Development
+## Running
 
-Requires Go 1.24+.
+Requires Go 1.26+ (see the `go` directive in `go.mod`).
+
+### Development
 
 ```sh
 # run the development server on :3002
 NODE_ENV=development go run .
-
-# build
-go build -o excalidraw-room-server .
-
-# run the parity suite (Go integration test)
-go test ./...
 ```
 
-The server shuts down gracefully on `SIGINT`/`SIGTERM`: it disconnects
-socket.io clients so long-polling requests drain, then waits up to 10s for
-in-flight HTTP requests before exiting.
+### Production
 
-## Docker
+```sh
+go build -o excalidraw-room-server .
+./excalidraw-room-server          # listens on :80 unless PORT is set
+```
+
+### Docker
 
 ```sh
 docker build -t excalidraw-room-go .
 docker run --rm -p 80:80 excalidraw-room-go
 ```
 
-## Verification
+The server exits with code `0` after a graceful shutdown (`SIGINT`/`SIGTERM`):
+socket.io clients are disconnected first so long-polling requests drain, then
+in-flight HTTP requests get up to 10 seconds to finish.
 
-`main_test.go` is an integration test written against the original server's
-behavior. It boots the full handler and drives it with the Go
-`socket.io-client-go` (a port of the real Socket.IO v4 client), covering the
-HTTP endpoints, every Socket.IO event above, follow-mode, disconnecting, and
-CORS preflight:
+## Testing
+
+`main_test.go` is a Go integration test that boots the full handler and drives
+it with [socket.io-client-go](https://github.com/zishang520/socket.io-client-go)
+— a Go port of the real Socket.IO v4 client. It covers the HTTP endpoints,
+every Socket.IO event, follow mode, disconnecting, and CORS preflight:
 
 ```sh
 go test ./...
 ```
 
-The behaviors were also validated side-by-side against the original Node server
-during development, with the same scenario suite passing on both
-implementations.
+The behavior was validated side-by-side against the original Node server during
+development: the same scenario suite passes on both implementations.
 
-## Known deviations
+## Compatibility with the original excalidraw-room
 
-These differences are cosmetic or unused in practice and do not change the
-collaboration protocol:
+The protocol surface — HTTP responses, Socket.IO event names, payload shapes,
+room and follow-mode semantics, and environment configuration — is identical to
+the original.
 
-- `/socket.io/socket.io.js` (and other Socket.IO client asset paths) are not
-  served. Excalidraw bundles its own Socket.IO client.
-- HTTP responses omit Express-specific headers (`X-Powered-By`, `ETag`). The
-  `Content-Type` and body of `GET /` are byte-identical to the original.
-- The Engine.IO open packet emits its JSON fields in a different order and the
-  session id is generated by the Go port's id generator. Both are opaque to
-  clients.
+A few notes:
+
+- **Room events are serialized.** The original ran on a single-threaded event
+  loop, so its handlers never interleaved. The Go adapter dispatches each
+  socket's events on its own goroutine, so `join-room`, `user-follow`, and
+  `disconnecting` are processed under a shared mutex to reproduce the original's
+  ordering and avoid dropping membership updates.
+- **`/socket.io/socket.io.js` is not served.** Excalidraw bundles its own
+  Socket.IO client, so the convenience asset endpoint is omitted.
+- **HTTP headers differ cosmetically.** The `Content-Type` and body of `GET /`
+  are byte-identical, but Express-specific headers (`X-Powered-By`, `ETag`,
+  keep-alive hints) are not reproduced.
+- **Engine.IO open-packet JSON field order and session-id format** differ (both
+  are opaque to clients).
 
 ## License
 
