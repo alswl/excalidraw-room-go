@@ -42,6 +42,13 @@ Connection semantics (including the `disconnecting` handler that broadcasts
 `room-user-change` to the remaining room members and `broadcast-unfollow` when a
 follow room becomes empty) replicate the original implementation exactly.
 
+Room-mutating events (`join-room`, `user-follow`, `disconnecting`) are processed
+under a shared mutex. The original server ran on a single-threaded event loop,
+so its handlers never interleaved; the Go adapter dispatches each socket's
+events on its own goroutine, and serializing the handlers reproduces the
+original's ordering (and avoids dropping membership updates when two sockets
+join the same room within the same instant).
+
 ### Configuration
 
 | Env var        | Default  | Notes                                                                 |
@@ -63,26 +70,37 @@ NODE_ENV=development go run .
 
 # build
 go build -o excalidraw-room-server .
+
+# run the parity suite (Go integration test)
+go test ./...
 ```
 
-## Start with pm2
+The server shuts down gracefully on `SIGINT`/`SIGTERM`: it disconnects
+socket.io clients so long-polling requests drain, then waits up to 10s for
+in-flight HTTP requests before exiting.
+
+## Docker
 
 ```sh
-pm2 start pm2.production.json
+docker build -t excalidraw-room-go .
+docker run --rm -p 80:80 excalidraw-room-go
 ```
 
 ## Verification
 
-`test/parity-test.js` is an end-to-end test written against the original
-server's behavior. It drives the HTTP endpoints and a real `socket.io-client`
-(v4) through every event above and asserts identical results. Run it with:
+`main_test.go` is an integration test written against the original server's
+behavior. It boots the full handler and drives it with the Go
+`socket.io-client-go` (a port of the real Socket.IO v4 client), covering the
+HTTP endpoints, every Socket.IO event above, follow-mode, disconnecting, and
+CORS preflight:
 
 ```sh
-node test/parity-test.js http://localhost:3002
+go test ./...
 ```
 
-The suite was validated side-by-side against the original Node server, with all
-checks passing on both implementations.
+The behaviors were also validated side-by-side against the original Node server
+during development, with the same scenario suite passing on both
+implementations.
 
 ## Known deviations
 

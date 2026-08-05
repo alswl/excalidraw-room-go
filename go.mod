@@ -6,7 +6,9 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.35.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/joho/godotenv v1.5.1
+	github.com/zishang520/engine.io-client-go v1.1.0
 	github.com/zishang520/engine.io/v2 v2.5.0
+	github.com/zishang520/socket.io-client-go v1.1.0
 	github.com/zishang520/socket.io/v2 v2.5.0
 )
 
@@ -23,7 +25,7 @@ require (
 	github.com/zishang520/engine.io-go-parser v1.3.2 // indirect
 	github.com/zishang520/socket.io-go-parser/v2 v2.5.0 // indirect
 	github.com/zishang520/webtransport-go v0.9.1 // indirect
-	go.uber.org/mock v0.5.0 // indirect
+	go.uber.org/mock v0.5.1 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
@@ -31,4 +33,5 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
+	resty.dev/v3 v3.0.0-beta.3 // indirect
 )

@@ -31,7 +31,7 @@ type rootOutput struct {
 //
 // The huma auto-documentation routes (/openapi, /docs, /schemas) are left
 // disabled so the HTTP surface stays identical to the original server.
-func setupHTTP(router chi.Router) huma.API {
+func setupHTTP(router chi.Router) {
 	config := huma.Config{
 		OpenAPI: &huma.OpenAPI{
 			OpenAPI: "3.1.0",
@@ -42,19 +42,16 @@ func setupHTTP(router chi.Router) huma.API {
 		},
 		Formats: huma.DefaultFormats,
 	}
-	textFormat := huma.Format{
+	// Register under the exact header value (including charset) so huma can
+	// marshal the same Content-Type the original Express server sent.
+	config.Formats["text/html; charset=utf-8"] = huma.Format{
 		Marshal: func(w io.Writer, v any) error {
-			switch t := v.(type) {
-			case textBody:
-				_, err := io.WriteString(w, string(t))
-				return err
-			case string:
-				_, err := io.WriteString(w, t)
-				return err
-			default:
-				_, err := fmt.Fprint(w, v)
-				return err
+			body, ok := v.(textBody)
+			if !ok {
+				return fmt.Errorf("unexpected body type %T", v)
 			}
+			_, err := io.WriteString(w, string(body))
+			return err
 		},
 		Unmarshal: func(data []byte, v any) error {
 			if tb, ok := v.(*textBody); ok {
@@ -64,10 +61,6 @@ func setupHTTP(router chi.Router) huma.API {
 			return fmt.Errorf("cannot unmarshal into %T", v)
 		},
 	}
-	// Register under both the bare type and the full header value so huma can
-	// marshal the exact "text/html; charset=utf-8" content type Express sent.
-	config.Formats["text/html"] = textFormat
-	config.Formats["text/html; charset=utf-8"] = textFormat
 	config.DefaultFormat = "application/json"
 
 	api := humachi.New(router, config)
@@ -77,7 +70,6 @@ func setupHTTP(router chi.Router) huma.API {
 		Method:        http.MethodGet,
 		Path:          "/",
 		Summary:       "Root endpoint",
-		Description:   "Excalidraw collaboration server is up.",
 		DefaultStatus: http.StatusOK,
 	}, func(ctx context.Context, _ *struct{}) (*rootOutput, error) {
 		return &rootOutput{Body: textBody(rootMessage)}, nil
@@ -85,6 +77,4 @@ func setupHTTP(router chi.Router) huma.API {
 
 	// Static files from ./public (mirrors express.static("public")).
 	router.Handle("/*", http.FileServer(http.Dir("public")))
-
-	return api
 }

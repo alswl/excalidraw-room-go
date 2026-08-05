@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/zishang520/engine.io/v2/transports"
 	"github.com/zishang520/engine.io/v2/types"
@@ -12,17 +13,19 @@ import (
 
 const followRoomPrefix = "follow@"
 
+// roomMu serializes the room-mutating handlers. The original server processes
+// every socket event on a single-threaded event loop, so concurrent joins
+// cannot interleave; the Go adapter dispatches each socket's events on its own
+// goroutine, which lets two simultaneous join-room events interleave and drop
+// membership updates. Serializing them reproduces the original's ordering.
+var roomMu sync.Mutex
+
 // setupSocketIO builds the socket.io server with behavior identical to the
 // original excalidraw-room Node server:
 //
 //   - transports: websocket + polling (websocket preferred, upgrades allowed)
 //   - allowEIO3: true
-//   - cors: {
-//     origin: CORS_ORIGIN || "*",
-//     allowedHeaders: ["Content-Type", "Authorization"],
-//     credentials: true,
-//     }
-//   - pingInterval: 25000ms, pingTimeout: 20000ms (socket.io defaults)
+//   - cors: { origin: CORS_ORIGIN || "*", allowedHeaders: ["Content-Type", "Authorization"], credentials: true }
 //
 // The returned server is an http.Handler served at /socket.io/.
 func setupSocketIO(corsOrigin string) *socketio.Server {
@@ -59,9 +62,12 @@ func handleSocketConnection(io *socketio.Server, s *socketio.Socket) {
 
 	s.On("join-room", func(args ...any) {
 		roomID, ok := args[0].(string)
-		if !ok || roomID == "" {
+		if !ok {
 			return
 		}
+		roomMu.Lock()
+		defer roomMu.Unlock()
+
 		s.Join(socketio.Room(roomID))
 
 		io.In(socketio.Room(roomID)).FetchSockets()(func(sockets []*socketio.RemoteSocket, _ error) {
@@ -70,7 +76,14 @@ func handleSocketConnection(io *socketio.Server, s *socketio.Socket) {
 				s.Emit("first-in-room")
 			} else {
 				// socket.broadcast.to(roomID).emit("new-user", socket.id)
-				s.Broadcast().To(socketio.Room(roomID)).Emit("new-user", s.Id())
+				// Emit to each member by id rather than broadcasting to the room:
+				// the adapter can drop a room-targeted broadcast during a
+				// concurrent join, and the membership snapshot is authoritative.
+				for _, sock := range sockets {
+					if sock.Id() != s.Id() {
+						sock.Emit("new-user", s.Id())
+					}
+				}
 			}
 			// io.in(roomID).emit("room-user-change", ids)
 			io.In(socketio.Room(roomID)).Emit("room-user-change", ids)
@@ -100,6 +113,9 @@ func handleSocketConnection(io *socketio.Server, s *socketio.Socket) {
 		if !ok {
 			return
 		}
+		roomMu.Lock()
+		defer roomMu.Unlock()
+
 		roomID := socketio.Room(followRoomPrefix + payload.UserToFollow.SocketID)
 		switch payload.Action {
 		case "FOLLOW":
@@ -117,7 +133,10 @@ func handleSocketConnection(io *socketio.Server, s *socketio.Socket) {
 		})
 	})
 
-	s.On("disconnecting", func(args ...any) {
+	s.On("disconnecting", func(_ ...any) {
+		roomMu.Lock()
+		defer roomMu.Unlock()
+
 		for _, room := range s.Rooms().Keys() {
 			roomName := string(room)
 			io.In(room).FetchSockets()(func(sockets []*socketio.RemoteSocket, _ error) {
@@ -156,11 +175,11 @@ func socketIDs(sockets []*socketio.RemoteSocket) []socketio.SocketId {
 
 // parseBroadcastArgs extracts (roomID, encryptedData, iv) from a
 // server-broadcast / server-volatile-broadcast packet.
-func parseBroadcastArgs(args []any) (roomID string, data, iv []byte, ok bool) {
+func parseBroadcastArgs(args []any) (string, []byte, []byte, bool) {
 	if len(args) < 3 {
 		return "", nil, nil, false
 	}
-	roomID, ok = args[0].(string)
+	roomID, ok := args[0].(string)
 	if !ok {
 		return "", nil, nil, false
 	}
@@ -168,30 +187,21 @@ func parseBroadcastArgs(args []any) (roomID string, data, iv []byte, ok bool) {
 }
 
 // bufferToBytes extracts raw bytes from a decoded binary attachment. The
-// socket.io parser reconstructs ArrayBuffer / Uint8Array values as
-// *types.BytesBuffer; []byte and io.Reader are also accepted for robustness.
+// socket.io parser reconstructs ArrayBuffer / Uint8Array values as buffers
+// that expose Bytes() (or, as a fallback, an io.Reader).
 func bufferToBytes(v any) []byte {
-	switch b := v.(type) {
-	case []byte:
-		return b
-	case string:
-		return []byte(b)
-	case *bytes.Buffer:
+	if b, ok := v.(interface{ Bytes() []byte }); ok {
 		return b.Bytes()
-	case io.Reader:
-		data, _ := io.ReadAll(b)
-		return data
-	default:
-		if br, ok := v.(interface{ Bytes() []byte }); ok {
-			return br.Bytes()
-		}
-		return nil
 	}
+	if r, ok := v.(io.Reader); ok {
+		data, _ := io.ReadAll(r)
+		return data
+	}
+	return nil
 }
 
 type userToFollow struct {
 	SocketID string `json:"socketId"`
-	Username string `json:"username"`
 }
 
 type userFollowPayload struct {
@@ -199,27 +209,23 @@ type userFollowPayload struct {
 	Action       string       `json:"action"`
 }
 
-// parseFollowPayload extracts the user-follow payload from a decoded packet.
+// parseFollowPayload decodes the user-follow payload from a packet argument.
+// A missing target socket id is treated as invalid, since a follow room for an
+// unknown id would never be observable by any client.
 func parseFollowPayload(args []any) (userFollowPayload, bool) {
 	if len(args) < 1 {
 		return userFollowPayload{}, false
 	}
-	m, ok := args[0].(map[string]any)
-	if !ok {
+	data, err := json.Marshal(args[0])
+	if err != nil {
 		return userFollowPayload{}, false
 	}
-	uto, ok := m["userToFollow"].(map[string]any)
-	if !ok {
+	var payload userFollowPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
 		return userFollowPayload{}, false
 	}
-	socketID, _ := uto["socketId"].(string)
-	username, _ := uto["username"].(string)
-	action, _ := m["action"].(string)
-	if socketID == "" {
+	if payload.UserToFollow.SocketID == "" {
 		return userFollowPayload{}, false
 	}
-	return userFollowPayload{
-		UserToFollow: userToFollow{SocketID: socketID, Username: username},
-		Action:       action,
-	}, true
+	return payload, true
 }
