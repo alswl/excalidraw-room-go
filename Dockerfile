@@ -1,6 +1,10 @@
 # Build stage
 FROM golang:1.26-alpine AS build
 
+# Overridable Go module proxy (e.g. a China mirror via --build-arg).
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=$GOPROXY
+
 WORKDIR /src
 
 COPY go.mod go.sum ./
