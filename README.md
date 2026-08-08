@@ -38,12 +38,13 @@ collaborate without any changes.
 
 The two layers share one HTTP server. Requests under `/socket.io/` are handled
 by the Socket.IO engine; everything else is served by the huma router. Both are
-mounted in [`buildRouter`](main.go), and the server runs under a single
+mounted in [`pkg/server`](pkg/server/server.go), and the server runs under a single
 `http.Server` with graceful shutdown.
 
 ## API
 
-The API is byte-for-byte compatible with the original server.
+The collaboration endpoints are byte-for-byte compatible with the original
+server. The Go service also exposes standard operational probes.
 
 ### HTTP
 
@@ -51,6 +52,8 @@ The API is byte-for-byte compatible with the original server.
 | ------ | --------- | ------------------------------------------------------------------- |
 | GET    | `/`       | `Excalidraw collaboration server is up :)` (`text/html; charset=utf-8`) |
 | GET    | `/*`      | Static files from `./public` (mirrors `express.static("public")`)        |
+| GET    | `/health` | liveness probe (`204 No Content`)                                         |
+| GET    | `/ready`  | readiness probe (`204 No Content`)                                        |
 
 ### Socket.IO (served at `/socket.io/`)
 
@@ -75,12 +78,13 @@ emits `broadcast-unfollow` when a follow room becomes empty.
 ### Configuration
 
 Configuration is read from environment variables (12-factor style) with
-Go-friendly defaults:
+Go-friendly defaults. Invalid `PORT` values fail fast during startup:
 
 | Env var       | Default | Notes                    |
 | ------------- | ------- | ------------------------ |
 | `PORT`        | `8080`  | HTTP listen port         |
 | `CORS_ORIGIN` | `*`     | allowed Socket.IO origin |
+| `PUBLIC_DIR`  | `public`| static assets directory  |
 
 ## Running
 
@@ -90,13 +94,13 @@ Requires Go 1.26+ (see the `go` directive in `go.mod`).
 
 ```sh
 # run the server on :8080
-go run .
+go run ./cmd/server
 ```
 
 ### Production
 
 ```sh
-go build -o excalidraw-room-server .
+go build -o excalidraw-room-server ./cmd/server
 PORT=8080 ./excalidraw-room-server
 ```
 
