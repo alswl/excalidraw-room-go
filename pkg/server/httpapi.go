@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -31,7 +31,7 @@ type rootOutput struct {
 //
 // The huma auto-documentation routes (/openapi, /docs, /schemas) are left
 // disabled so the HTTP surface stays identical to the original server.
-func setupHTTP(router chi.Router) {
+func setupHTTP(router chi.Router, staticDir string) {
 	config := huma.Config{
 		OpenAPI: &huma.OpenAPI{
 			OpenAPI: "3.1.0",
@@ -75,6 +75,15 @@ func setupHTTP(router chi.Router) {
 		return &rootOutput{Body: textBody(rootMessage)}, nil
 	})
 
+	// Health endpoints are intentionally outside the documented collaboration
+	// API. Readiness currently has no external dependency to probe.
+	router.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	router.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Static files from ./public (mirrors express.static("public")).
-	router.Handle("/*", http.FileServer(http.Dir("public")))
+	router.Handle("/*", http.FileServer(http.Dir(staticDir)))
 }

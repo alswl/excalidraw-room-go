@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alswl/excalidraw-room-go/pkg/config"
 	"github.com/zishang520/engine.io-client-go/transports"
 	"github.com/zishang520/engine.io/v2/types"
 	client "github.com/zishang520/socket.io-client-go/socket"
@@ -18,9 +19,14 @@ import (
 // startServer boots the full application handler on an ephemeral port.
 func startServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	handler, _ := buildRouter(Config{Port: 0, CORSOrigin: "*"})
-	ts := httptest.NewServer(handler)
-	t.Cleanup(ts.Close)
+	app := New(config.Config{CORSOrigin: "*", StaticDir: "../../public"})
+	ts := httptest.NewServer(app.Handler)
+	t.Cleanup(func() {
+		ts.Close()
+		if err := app.Close(); err != nil {
+			t.Errorf("close socket.io: %v", err)
+		}
+	})
 	return ts
 }
 
@@ -133,6 +139,17 @@ func TestHTTPEndpoints(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET /nope status = %d, want 404", resp.StatusCode)
+	}
+
+	for _, path := range []string{"/health", "/ready"} {
+		resp, err = http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("GET %s status = %d, want 204", path, resp.StatusCode)
+		}
 	}
 }
 

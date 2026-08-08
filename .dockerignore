@@ -1,0 +1,16 @@
+.git
+.gitignore
+.github
+.idea
+.dockerignore
+.vscode
+CLAUDE.md
+Dockerfile
+Makefile
+README.md
+docs
+specs
+.specify
+.env.example
+excalidraw-room-go
+*.log

@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -28,13 +28,17 @@ var roomMu sync.Mutex
 //   - cors: { origin: CORS_ORIGIN || "*", allowedHeaders: ["Content-Type", "Authorization"], credentials: true }
 //
 // The returned server is an http.Handler served at /socket.io/.
-func setupSocketIO(corsOrigin string) *socketio.Server {
+func setupSocketIO(corsOrigin string, maxHTTPBufferSize int) *socketio.Server {
 	opts := socketio.DefaultServerOptions()
 	opts.SetPath("/socket.io")
 	opts.SetServeClient(false)
 	opts.SetTransports(types.NewSet(transports.WEBSOCKET, transports.POLLING))
 	opts.SetAllowUpgrades(true)
 	opts.SetAllowEIO3(true)
+	// socket.io defaults maxHttpBufferSize to 1MB; a full-scene broadcast on a
+	// busy canvas exceeds that and the server drops the sender's connection
+	// (excalidraw-collaboration#73). Raise it so large scenes are relayed.
+	opts.SetMaxHttpBufferSize(int64(maxHTTPBufferSize))
 	opts.SetCors(&types.Cors{
 		Origin:         corsOrigin,
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
