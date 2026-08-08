@@ -25,5 +25,37 @@ func TestLoadRejectsInvalidPort(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestLoadDefaultMaxHTTPBufferSize(t *testing.T) {
+	t.Setenv("MAX_HTTP_BUFFER_SIZE", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MaxHTTPBufferSize != DefaultMaxHTTPBufferSize {
+		t.Fatalf("MaxHTTPBufferSize = %d, want default %d", cfg.MaxHTTPBufferSize, DefaultMaxHTTPBufferSize)
+	}
+}
+
+func TestLoadOverridesMaxHTTPBufferSize(t *testing.T) {
+	t.Setenv("MAX_HTTP_BUFFER_SIZE", "5242880")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MaxHTTPBufferSize != 5242880 {
+		t.Fatalf("MaxHTTPBufferSize = %d, want 5242880", cfg.MaxHTTPBufferSize)
+	}
+}
+
+func TestLoadRejectsInvalidMaxHTTPBufferSize(t *testing.T) {
+	for _, v := range []string{"not-a-number", "0", "-1"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv("MAX_HTTP_BUFFER_SIZE", v)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want validation error")
+			}
+		})
+	}
 }

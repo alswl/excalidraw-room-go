@@ -26,6 +26,7 @@ The server listens on `:8080` by default.
 | `PORT` | `8080` | HTTP port (1–65535) |
 | `CORS_ORIGIN` | `*` | Allowed Socket.IO origin |
 | `PUBLIC_DIR` | `public` | Static asset directory |
+| `MAX_HTTP_BUFFER_SIZE` | `5242880` | Max bytes per Socket.IO message (5MB; raise for very large scenes) |
 
 Use `.env.example` as a configuration reference.
 

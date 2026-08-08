@@ -23,7 +23,13 @@ func New(cfg config.Config) *Server {
 
 	setupHTTP(router, cfg.StaticDir)
 
-	io := setupSocketIO(cfg.CORSOrigin)
+	// Guard against a zero-value Config (e.g. tests constructing it directly)
+	// so the server always runs with a usable buffer size.
+	maxBuf := cfg.MaxHTTPBufferSize
+	if maxBuf <= 0 {
+		maxBuf = config.DefaultMaxHTTPBufferSize
+	}
+	io := setupSocketIO(cfg.CORSOrigin, maxBuf)
 	sioHandler := io.ServeHandler(nil)
 	router.Handle("/socket.io/*", sioHandler)
 	router.Handle("/socket.io", sioHandler)
