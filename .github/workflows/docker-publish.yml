@@ -1,6 +1,12 @@
 name: Publish Docker
 
 on:
+  # Trigger on version tags: a pushed tag (e.g. v0.1.0) is published
+  # automatically, with the tag as the image version plus a :latest tag.
+  push:
+    tags:
+      - 'v*'
+  # Manual fallback: publish an arbitrary image tag (default: latest).
   workflow_dispatch:
     inputs:
       tag:
@@ -18,6 +24,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Compute image tags
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="${{ github.event.inputs.tag }}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          TAGS="alswl/excalidraw-room-go:${VERSION}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAGS="${TAGS},alswl/excalidraw-room-go:latest"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -32,6 +53,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: alswl/excalidraw-room-go:${{ github.event.inputs.tag }}
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

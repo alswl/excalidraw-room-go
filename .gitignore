@@ -7,6 +7,11 @@
 logs
 *.log
 
+# Makefile-go build/test artifacts
+/bin
+cover.out
+.cover/
+
 # Local spec tooling (symlinked to ~/dev/my/my-specs/projects/excalidraw-room-go/)
 .claude
 .specify

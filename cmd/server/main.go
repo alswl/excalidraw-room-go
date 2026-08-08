@@ -13,6 +13,7 @@ import (
 
 	"github.com/alswl/excalidraw-room-go/pkg/config"
 	appserver "github.com/alswl/excalidraw-room-go/pkg/server"
+	"github.com/alswl/excalidraw-room-go/pkg/version"
 )
 
 func main() {
@@ -54,7 +55,7 @@ func run() error {
 		close(errCh)
 	}()
 
-	slog.Info("listening", "port", cfg.Port)
+	slog.Info("listening", "version", version.Version, "port", cfg.Port)
 
 	select {
 	case err, ok := <-errCh:
